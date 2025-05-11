@@ -35,6 +35,7 @@ const Editor: React.FC<EditorProps> = ({ username, userColor, sessionId }) => {
   const [editorLoaded, setEditorLoaded] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
+  const [connectionStatus, setConnectionStatus] = useState('connecting');
   
   const ydocRef = useRef<Y.Doc | null>(null);
   const providerRef = useRef<WebrtcProvider | null>(null);
@@ -62,18 +63,23 @@ const Editor: React.FC<EditorProps> = ({ username, userColor, sessionId }) => {
     });
     providerRef.current = provider;
     
-    // Set awareness (user presence)
-    const awareness = provider.awareness;
-    awareness.setLocalStateField('user', {
+    // Connection status logging
+    provider.on('status', (event: { connected: boolean }) => {
+      setConnectionStatus(event.connected ? 'connected' : 'disconnected');
+      console.log('[Yjs] Connection status:', event.connected ? 'connected' : 'disconnected');
+    });
+    
+    // Set awareness (user presence) immediately
+    provider.awareness.setLocalStateField('user', {
       id: userIdRef.current,
       name: username,
       color: userColor
     });
     
-    // Handle awareness updates (users joining/leaving)
-    awareness.on('change', () => {
+    // Awareness update handler
+    const updateAwareness = () => {
       const users: {id: string, name: string, color: string}[] = [];
-      awareness.getStates().forEach((state: any) => {
+      provider.awareness.getStates().forEach((state: any) => {
         if (state.user) {
           users.push({
             id: state.user.id,
@@ -83,7 +89,10 @@ const Editor: React.FC<EditorProps> = ({ username, userColor, sessionId }) => {
         }
       });
       setActiveUsers(users);
-    });
+      console.log('[Yjs] Awareness users:', users);
+    };
+    provider.awareness.on('change', updateAwareness);
+    updateAwareness(); // initial
     
     // Initialize content from shared doc
     const initialContent = ytext.toString();
@@ -97,6 +106,7 @@ const Editor: React.FC<EditorProps> = ({ username, userColor, sessionId }) => {
     });
     
     return () => {
+      provider.awareness.off('change', updateAwareness);
       provider.disconnect();
       ydoc.destroy();
     };
@@ -176,6 +186,9 @@ const Editor: React.FC<EditorProps> = ({ username, userColor, sessionId }) => {
       <div className="active-users-container mb-4 flex flex-wrap gap-2 items-center">
         <h2 className="text-lg font-semibold mb-2 text-gray-700">Active Users ({activeUsers.length})</h2>
         <div className="flex flex-wrap gap-2">
+          {activeUsers.length === 0 && (
+            <span className="text-gray-400 italic">No other users online</span>
+          )}
           {activeUsers.map((user) => (
             <div
               key={user.id}
@@ -188,6 +201,7 @@ const Editor: React.FC<EditorProps> = ({ username, userColor, sessionId }) => {
             </div>
           ))}
         </div>
+        <span className={`ml-4 text-xs font-semibold ${connectionStatus === 'connected' ? 'text-green-600' : 'text-yellow-600'}`}>Status: {connectionStatus}</span>
         <button
           onClick={handleSave}
           disabled={isSaving}
