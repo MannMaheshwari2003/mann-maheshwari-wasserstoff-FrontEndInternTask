@@ -7,7 +7,7 @@ import 'froala-editor/css/froala_editor.pkgd.min.css';
 import '@fortawesome/fontawesome-free/css/all.min.css';
 import { v4 as uuidv4 } from 'uuid';
 import * as Y from 'yjs';
-import { WebrtcProvider } from 'y-webrtc';
+import { WebsocketProvider } from 'y-websocket';
 
 // Dynamically import Froala to avoid SSR issues
 const FroalaEditor = dynamic(
@@ -38,7 +38,7 @@ const Editor: React.FC<EditorProps> = ({ username, userColor, sessionId }) => {
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   
   const ydocRef = useRef<Y.Doc | null>(null);
-  const providerRef = useRef<WebrtcProvider | null>(null);
+  const providerRef = useRef<WebsocketProvider | null>(null);
   const userIdRef = useRef<string>(uuidv4());
   
   useEffect(() => {
@@ -53,20 +53,13 @@ const Editor: React.FC<EditorProps> = ({ username, userColor, sessionId }) => {
     const ytext = ydoc.getText('froala');
     
     // Set up WebRTC provider for real-time collaboration
-    const provider = new WebrtcProvider(`froala-session-${sessionId}`, ydoc, {
-      signaling: [
-        'wss://signaling.yjs.dev',
-        'wss://y-webrtc-signaling-eu.herokuapp.com',
-        'wss://y-webrtc-signaling-us.herokuapp.com',
-        'wss://y-webrtc-signaling-us-2.herokuapp.com'
-      ],
-    });
+    const provider = new WebsocketProvider('wss://demos.yjs.dev', `froala-session-${sessionId}`, ydoc);
     providerRef.current = provider;
     
     // Connection status logging
-    provider.on('status', (event: { connected: boolean }) => {
-      setConnectionStatus(event.connected ? 'connected' : 'disconnected');
-      console.log('[Yjs] Connection status:', event.connected ? 'connected' : 'disconnected');
+    provider.on('status', (event: { status: string }) => {
+      setConnectionStatus(event.status);
+      console.log('[Yjs] Connection status:', event.status);
     });
     
     // Set awareness (user presence) immediately
@@ -100,6 +93,13 @@ const Editor: React.FC<EditorProps> = ({ username, userColor, sessionId }) => {
       setContent(initialContent);
     }
     
+    // Load from localStorage if available
+    const localKey = `froala-session-${sessionId}-local`;
+    const saved = localStorage.getItem(localKey);
+    if (saved && !initialContent) {
+      ytext.insert(0, saved);
+    }
+    
     // Observe changes to update editor
     ytext.observe((event: Y.YTextEvent) => {
       setContent(ytext.toString());
@@ -107,7 +107,7 @@ const Editor: React.FC<EditorProps> = ({ username, userColor, sessionId }) => {
     
     return () => {
       provider.awareness.off('change', updateAwareness);
-      provider.disconnect();
+      provider.destroy();
       ydoc.destroy();
     };
   }, [sessionId, username, userColor]);
@@ -127,7 +127,18 @@ const Editor: React.FC<EditorProps> = ({ username, userColor, sessionId }) => {
   };
   
   const handleSave = () => {
+    if (!sessionId) return;
     setIsSaving(true);
+    const localKey = `froala-session-${sessionId}-local`;
+    localStorage.setItem(localKey, content);
+    setTimeout(() => {
+      setIsSaving(false);
+      setSaveMsg('Document saved to your browser!');
+      setTimeout(() => setSaveMsg(''), 2000);
+    }, 500);
+  };
+  
+  const handleDownload = () => {
     const blob = new Blob([content], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -138,7 +149,6 @@ const Editor: React.FC<EditorProps> = ({ username, userColor, sessionId }) => {
     setTimeout(() => {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      setIsSaving(false);
       setSaveMsg('Document downloaded!');
       setTimeout(() => setSaveMsg(''), 2000);
     }, 500);
@@ -205,9 +215,15 @@ const Editor: React.FC<EditorProps> = ({ username, userColor, sessionId }) => {
         <button
           onClick={handleSave}
           disabled={isSaving}
-          className={`ml-auto px-5 py-2 rounded-lg font-semibold text-white shadow transition-all duration-200 ${isSaving ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
+          className={`ml-auto px-5 py-2 rounded-lg font-semibold text-white shadow transition-all duration-200 ${isSaving ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
         >
-          {isSaving ? 'Saving...' : 'Save & Download'}
+          {isSaving ? 'Saving...' : 'Save'}
+        </button>
+        <button
+          onClick={handleDownload}
+          className="ml-2 px-5 py-2 rounded-lg font-semibold text-white shadow transition-all duration-200 bg-blue-600 hover:bg-blue-700"
+        >
+          Download
         </button>
         {saveMsg && <span className="ml-4 text-green-600 font-medium animate-fade-in">{saveMsg}</span>}
       </div>
