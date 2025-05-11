@@ -53,7 +53,12 @@ const Editor: React.FC<EditorProps> = ({ username, userColor, sessionId }) => {
     
     // Set up WebRTC provider for real-time collaboration
     const provider = new WebrtcProvider(`froala-session-${sessionId}`, ydoc, {
-      signaling: ['wss://signaling.yjs.dev'],
+      signaling: [
+        'wss://signaling.yjs.dev',
+        'wss://y-webrtc-signaling-eu.herokuapp.com',
+        'wss://y-webrtc-signaling-us.herokuapp.com',
+        'wss://y-webrtc-signaling-us-2.herokuapp.com'
+      ],
     });
     providerRef.current = provider;
     
